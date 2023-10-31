@@ -12,6 +12,6 @@
 
 # Getting Started
 
-# Example
+# Examples
 
 # Configuration

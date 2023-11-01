@@ -1,33 +1,5 @@
 {
     "test.accdb": {
-        "subjects": {},
-        "tables": {
-            "All Students": [
-                "student id",
-                "last name",
-                "first name",
-                "subject",
-                "subject id",
-                "grade",
-                "disability/ell",
-                "teacher",
-                "block"
-            ],
-            "test": [
-                "studentid",
-                "last name",
-                "first name",
-                "teacher",
-                "score",
-                "subject",
-                "these ",
-                "are",
-                "filler",
-                "so",
-                "anyway"
-            ]
-        },
-        "relationships": {},
         "export_params": {
             "SOL LAST YEAR": [
                 {
@@ -35,7 +7,7 @@
                     "u_val": "MATH_6",
                     "operator": "<",
                     "val_1": 400,
-                    "color": "00FFFF00"
+                    "color": "00FF0000"
                 },
                 {
                     "u_col": "SUBJECT",
@@ -43,7 +15,7 @@
                     "operator": "< value <",
                     "val_1": 400,
                     "val_2": 425,
-                    "color": "00FF0000"
+                    "color": "00FFFF00"
                 }
             ]
         }

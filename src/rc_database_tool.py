@@ -21,32 +21,10 @@ CONFIG_NAME = "config.json"
 PATH = str(Path("").parent.absolute().parent.absolute())
 DATA = PATH + "\\data\\"
 DB = PATH + "\\databases\\"
-IMPORTS = PATH + "\\imports\\"
 EXPORTS = PATH + "\\exports\\"
-
-DEFAULT_ALL_STUDENTS_COLUMNS = """[Student ID] Int,
-                                  [Last Name] Text,
-                                  [First Name] Text,
-                                  [Subject] Text,
-                                  [Subject ID] Text,
-                                  [Grade] Int,
-                                  [Disability/ELL] Text,
-                                  [Teacher] Text,
-                                  [Block] Text"""
-
-DEFAULT_IMPORT_COLUMNS = """[Student ID] Int,
-                            [Last Name] Text,
-                            [First Name] Text,
-                            [Subject] Text,
-                            [Subject ID] Text"""
 
 
 def cli_run(args):
-    if args.create_db:
-        LocalDB(args.create_db[0])
-    if args.import_table:
-        db = LocalDB(args.import_table[1])
-        db.import_table(args.import_table[0])
     if args.export_all_students:
         db = LocalDB(args.export_all_students[0])
         db.export_all_students()
@@ -54,97 +32,47 @@ def cli_run(args):
 
 class LocalDB:
     def __init__(self, filename):
-        if ".accdb" in filename:
+        self.db_name = ""
+        if filename.split('.')[1] == "accdb":
             self.db_name = filename
-        else:
-            self.db_name = filename + ".accdb"
-
-        if not os.path.exists(DATA + CONFIG_NAME):
-            config = {}
-        else:
-            with open(DATA + CONFIG_NAME, "r") as fp:
-                config = json.load(fp)
-
-        if self.db_name not in config:
-            if not os.path.exists(DB + self.db_name):
-                self.create_access_file(self.db_name)
+            if not os.path.exists(DATA + CONFIG_NAME):
+                config = {}
             else:
-                print("%s exists." % self.db_name)
-            config[self.db_name] = {"subjects": {},
-                                    "tables": {},
-                                    "relationships": {},
-                                    "export_params": {},
-                                    }
-            with open(DATA + CONFIG_NAME, "w") as fp:
-                json.dump(config, fp, indent=4)
+                with open(DATA + CONFIG_NAME, "r") as fp:
+                    config = json.load(fp)
 
-        self.create_table("All Students", DEFAULT_ALL_STUDENTS_COLUMNS)
-
-    def __table_exists(self, table_name):
-        with open(DATA + CONFIG_NAME, "r") as fp:
-            config = json.load(fp)
-        if table_name in config[self.db_name]["tables"]:
-            return True
+            if self.db_name not in config:
+                if not os.path.exists(DB + self.db_name):
+                    print("%s file does not exist." % self.db_name)
+                else:
+                    print("%s exists." % self.db_name)
+                config[self.db_name] = {"export_params": {},}
+                with open(DATA + CONFIG_NAME, "w") as fp:
+                    json.dump(config, fp, indent=4)
         else:
+            print("%s file type not supported." % filename)
+
+    def table_exists(self, table):
+        dbname = DB + self.db_name
+        constr = "DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={0};".format(dbname)
+
+        dbconn = pypyodbc.connect(constr)
+
+        cur = dbconn.cursor()
+        try:
+            cur.execute("SELECT * from [%s]" % table)
+            return True
+        except:
             return False
 
-    def __create_table(self, table_name, columns):
-        if not self.table_exists(table_name):
-            command = "CREATE TABLE [%s] (%s);" % (table_name, columns)
-            self.execute_db(command, self.db_name)
-            df = self.get_db_table(table_name, self.db_name)
-            with open(DATA + CONFIG_NAME, "r") as fp:
-                config = json.load(fp)
-            config[self.db_name]["tables"][table_name] = df.columns.tolist()
-            with open(DATA + CONFIG_NAME, "w") as fp:
-                json.dump(config, fp, indent=4)
-
-    def __write_df_to_table(self, import_df, table_name):
-        command_queue = []
-
-        def sql_row_insert(row):
-            row = row.tolist()
-            command = command_base
-            for jdx, r in enumerate(row):
-                command += str(r)
-                if not jdx == len(row) - 1:
-                    command += "', '"
-            command += "');"
-            command_queue.append(command)
-
-        def pandas_sql_insert(df):
-            df.apply(sql_row_insert, axis=1)
-
-        columns = import_df.columns.tolist()
-        command_base = "INSERT INTO [%s] ([" % table_name
-        for idx, c in enumerate(columns):
-            command_base += str(c)
-            if not idx == len(columns) - 1:
-                command_base += "], ["
-        command_base += "]) VALUES ('"
-        pandas_sql_insert(import_df)
-
-        for c in command_queue:
-            self.execute_db(c, self.db_name)
-
-    def import_table(self, filename):
+    def export_all_students(self):
         if os.path.exists(DB + self.db_name):
-            table_name, extension = os.path.splitext(filename)
-            if not self.table_exists(table_name):
-                if extension == ".csv":
-                    df = pd.read_csv(IMPORTS + filename)
-                    self.create_table(table_name, self.df_to_columns(df))
-                    self.write_df_to_table(df, table_name)
-                elif extension == ".xlsx" or extension == ".xls":
-                    df = pd.read_excel(IMPORTS + filename)
-                    self.create_table(table_name, self.df_to_columns(df))
-                    self.write_df_to_table(df, table_name)
-                else:
-                    print("%s file type not supported.")
+            if self.table_exists("All Students"):
+                self.color_all_students()
             else:
-                print("%s table table already in %s." % (table_name, self.db_name))
+                print("All Students table not in %s." % self.db_name)
         else:
-            print("%s does not exist." % filename)
+            print("%s does not exist." % self.db_name)
 
     def add_export_param(self, column, unique_column, u_col_val, operator="<", val_1=None, val_2=None, color="00FFFF00"):
         valid_ops = ["<", "<=", ">", ">=", "< value <", "<= value <=", "> value >", ">= value >="]
@@ -173,16 +101,7 @@ class LocalDB:
         else:
             print("%s is not a valid operator." % operator)
 
-    def export_all_students(self):
-        if os.path.exists(DB + self.db_name):
-            if self.table_exists("All Students"):
-                self.color_all_students()
-            else:
-                print("All Students table not in %s." % self.db_name)
-        else:
-            print("%s does not exist." % self.db_name)
-
-    def __color_all_students(self):
+    def color_all_students(self):
         # TODO REMOVE
         # export_params is assumed to be made this is a test
         # self.add_export_param("SOL LAST YEAR", "SUBJECT", "MATH_6", val_1=400, color="00FF0000")
@@ -217,32 +136,12 @@ class LocalDB:
 
         wb.save(exp_path)
 
-    def __all_students_join(self, table_name):
+    def all_students_join(self, table_name):
         # Only joins with all students
         pass
 
-    def add_db_relationship(self, table_name, join_columns, new_columns):
-        with open(DATA + CONFIG_NAME, "r") as fp:
-            config = json.load(fp)
-
-        config[self.db_name]["relationships"][table_name] = {"join_columns": join_columns,
-                                                             "new_columns": new_columns}
-
-        with open(DATA + CONFIG_NAME, "w") as fp:
-            json.dumps(config, fp, indent=4)
-
-    def __add_subject_id_map(self, t_c_name, a_s_c_name):
-        # TABLE COLUMN NAME, ALL STUDENTS COLUMN NAME
-        with open(DATA + CONFIG_NAME, "r") as fp:
-            config = json.load(fp)
-
-        config[self.db_name]["subjects"][t_c_name] = a_s_c_name
-
-        with open(DATA + CONFIG_NAME, "w") as fp:
-            json.dumps(config, fp, indent=4)
-
     @staticmethod
-    def __autofit_ws(ws):
+    def autofit_ws(ws):
         for column in ws.columns:
             max_length = 0
             column_letter = column[0].column_letter
@@ -256,7 +155,7 @@ class LocalDB:
             ws.column_dimensions[column_letter].width = adjusted_width
 
     @staticmethod
-    def __color_switch(ws, col_names, col, command):
+    def color_switch(ws, col_names, col, command):
         if command["operator"] == "<":
             for row_cell in ws.iter_rows(min_row=2, max_row=ws.max_row):
                 if row_cell[col_names[command["u_col"]]].value == command["u_val"]:
@@ -299,7 +198,7 @@ class LocalDB:
                         row_cell[col_names[col]].fill = PatternFill(patternType="solid", fgColor=command["color"])
 
     @staticmethod
-    def __df_to_columns(df):
+    def df_to_columns(df):
         column_string = ""
         cols = df.columns.tolist()
         for idx, d in enumerate(df.dtypes):
@@ -316,7 +215,7 @@ class LocalDB:
         return column_string
 
     @staticmethod
-    def __create_access_file(name):
+    def create_access_file(name):
         try:
             dbname = DB + name
             acc_app = Dispatch("Access.Application")
@@ -338,7 +237,7 @@ class LocalDB:
         #     acc_app = None
 
     @staticmethod
-    def __execute_db(command, name):
+    def execute_db(command, name):
         dbname = DB + name
         constr = "DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={0};".format(dbname)
 
@@ -349,7 +248,7 @@ class LocalDB:
         dbconn.commit()
 
     @staticmethod
-    def __get_db_table(table, name):
+    def get_db_table(table, name):
         dbname = DB + name
         constr = "DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={0};".format(dbname)
 
@@ -367,16 +266,6 @@ class LocalDB:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Database Tool CLI")
-    parser.add_argument("-c", "--create_db",
-                        action="store",
-                        metavar="filename",
-                        nargs=1,
-                        help="Name of database file to be created.",)
-    parser.add_argument("-i", "--import_table",
-                        action="store",
-                        metavar="filename",
-                        nargs=2,
-                        help="Name of file to import. Name of target database.")
     parser.add_argument("-e", "--export_all_students",
                         action="store",
                         metavar="filename",
